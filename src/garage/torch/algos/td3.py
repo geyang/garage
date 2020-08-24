@@ -9,7 +9,9 @@ import torch.nn.functional as F
 from garage import _Default, log_performance, make_optimizer
 from garage._dtypes import TrajectoryBatch
 from garage.misc import tensor_utils
+from garage.np import obtain_evaluation_samples
 from garage.np.algos import RLAlgorithm
+from garage.np.policies import UniformRandomPolicy
 from garage.sampler import FragmentWorker, LocalSampler
 from garage.torch import (dict_np_to_torch, global_device, set_gpu_mode,
                           torch_to_np)
@@ -131,10 +133,6 @@ class TD3(RLAlgorithm):
         self._target_policy = copy.deepcopy(self.policy)
         self._target_qf_1 = copy.deepcopy(self._qf_1)
         self._target_qf_2 = copy.deepcopy(self._qf_2)
-        self._networks = [
-            self.policy, self._qf_1, self._qf_2, self._target_policy,
-            self._target_qf_1, self._target_qf_2
-        ]
 
         self._policy_optimizer = make_optimizer(policy_optimizer,
                                                 module=self.policy,
@@ -211,19 +209,23 @@ class TD3(RLAlgorithm):
             self._eval_env = runner.get_env_copy()
         last_returns = None
         runner.enable_logging = False
-
         for _ in runner.step_epochs():
             for cycle in range(self._steps_per_epoch):
-                # Obtain trasnsition batch and store it in replay buffer
-                runner.step_path = runner.obtain_trajectories(runner.step_itr)
+                # Obtain trasnsition batch and store it in replay buffer.
+                # Get action randomly from environment within warm-up steps.
+                # Afterwards, get action from policy.
+                if runner.step_itr >= self._start_steps:
+                    runner.step_path = runner.obtain_trajectories(runner.step_itr, agent_update=self.exploration_policy)
+                else:
+                    uniform_random_policy = UniformRandomPolicy(self._env_spec)
+                    runner.step_path = runner.obtain_trajectories(runner.step_itr, agent_update=uniform_random_policy)
                 self._replay_buffer.add_trajectory_batch(runner.step_path)
 
-                # Get action randomly from environment within warmup steps.
-                # Afterwards, get action from policy.
+                # Update after warm-up steps.
                 if runner.total_env_steps >= self._start_steps:
                     self._train_once(runner.step_itr)
 
-                # Evaluate and log the results
+                # Evaluate and log the results.
                 if (cycle == 0 and self._replay_buffer.n_transitions_stored >=
                         self._min_buffer_size):
                     runner.enable_logging = True
@@ -231,11 +233,11 @@ class TD3(RLAlgorithm):
                     log_performance(runner.step_path,
                                     eval_eps,
                                     discount=self._discount,
-                                    prefix='training')
+                                    prefix='Training')
                     last_returns = log_performance(runner.step_itr,
                                                    eval_eps,
                                                    discount=self._discount,
-                                                   prefix='evaluation')
+                                                   prefix='Evaluation')
                 runner.step_itr += 1
 
         return np.mean(last_returns)
@@ -266,7 +268,7 @@ class TD3(RLAlgorithm):
 
         if itr % self._steps_per_epoch == 0:
             logger.log('Training finished')
-            epoch = itr / self._steps_per_epoch
+            epoch = itr // self._steps_per_epoch
 
             if (self._replay_buffer.n_transitions_stored >=
                     self._min_buffer_size):
@@ -292,17 +294,17 @@ class TD3(RLAlgorithm):
                 (action network).
 
         """
-        rewards = samples_data['rewards'].reshape(-1, 1)
-        terminals = samples_data['terminals'].reshape(-1, 1)
-        actions = samples_data['actions']
-        observations = samples_data['observations']
-        next_observations = samples_data['next_observations']
+        rewards = samples_data['rewards'].to(global_device()).reshape(-1, 1)
+        terminals = samples_data['terminals'].to(global_device()).reshape(-1, 1)
+        actions = samples_data['actions'].to(global_device())
+        observations = samples_data['observations'].to(global_device())
+        next_observations = samples_data['next_observations'].to(global_device())
 
         next_inputs = next_observations
         inputs = observations
         with torch.no_grad():
             # Select action according to policy and add clipped noise
-            noise = (torch.randn_like(actions)* self._policy_noise).clamp(
+            noise = (torch.randn_like(actions) * self._policy_noise).clamp(
                 -self._policy_noise_clip, self._policy_noise_clip)
             next_actions = (self._target_policy(next_inputs) + noise).clamp(
                 -self._max_action, self._max_action)
@@ -358,52 +360,10 @@ class TD3(RLAlgorithm):
                 current performance of the algorithm.
 
         """
-        paths = []
-
-        for _ in range(self._num_evaluation_trajectories):
-            observations, actions, rewards, dones, agent_infos, env_infos = \
-                [], [], [], [], [], []
-            obs, path_length, episode_reward, agenet_info = \
-                self._eval_env.reset(), 0, 0, dict()
-            self.policy.reset()
-
-            while path_length < (self.max_episode_length or np.inf):
-                obs = self._eval_env.observation_space.flatten(obs)
-
-                # select action according to policy
-                with torch.no_grad():
-                    a = self.policy(torch.Tensor(obs).unsqueeze(0))
-                    action = self._get_action(a, self._exploration_noise)
-                    action = action.squeeze(0).numpy()
-
-                # Perform action
-                next_obs, reward, done, env_info = self._eval_env.step(action)
-                path_length += 1
-                episode_reward += reward
-
-                observations.append(obs)
-                rewards.append(episode_reward)
-                actions.append(action)
-                agent_infos.append(agenet_info)
-                env_infos.append(env_info)
-                dones.append(done)
-
-                if done:
-                    break
-
-                # Update state
-                obs = next_obs
-
-            path = dict(
-                observations=np.array(observations),
-                actions=np.array(actions),
-                rewards=np.array(rewards),
-                agent_infos=tensor_utils.stack_tensor_dict_list(agent_infos),
-                env_infos=tensor_utils.stack_tensor_dict_list(env_infos),
-                dones=np.array(dones),
-            )
-            paths.append(path)
-        return TrajectoryBatch.from_trajectory_list(self._eval_env.spec, paths)
+        return obtain_evaluation_samples(
+            self.exploration_policy,
+            self._eval_env,
+            num_trajs=self._num_evaluation_trajectories)
 
     def _update_network_parameters(self):
         """Update parameters in actor network and critic networks."""
@@ -437,6 +397,19 @@ class TD3(RLAlgorithm):
         tabular.record('QFunction/AverageAbsY',
                        np.mean(np.abs(self._epoch_ys)))
 
+    @property
+    def networks(self):
+        """Return all the networks within the model.
+
+        Returns:
+            list: A list of networks.
+
+        """
+        return [
+            self.policy, self._qf_1, self._qf_2, self._target_policy,
+            self._target_qf_1, self._target_qf_2
+        ]
+
     def to(self, device=None):
         """Put all the networks within the model on device.
 
@@ -449,7 +422,6 @@ class TD3(RLAlgorithm):
         else:
             set_gpu_mode(False)
 
-        if device is None:
-            device = global_device()
-        for net in self._networks:
+        device = device or global_device()
+        for net in self.networks:
             net.to(device)
