@@ -1,12 +1,12 @@
-"""The local runner for TensorFlow algorithms.
+"""The trainer for TensorFlow algorithms.
 
-A runner setup context for algorithms during initialization and
+A trainer setup context for algorithms during initialization and
 pipelines data between sampler and algorithm during training.
 """
 from dowel import logger
 import psutil
 
-from garage.experiment import LocalRunner
+from garage.trainer import Trainer
 from garage.sampler import DefaultWorker
 
 # pylint: disable=no-name-in-module
@@ -20,19 +20,19 @@ except ImportError:
     pass
 
 
-class LocalTFRunner(LocalRunner):
-    """This class implements a local runner for TensorFlow algorithms.
+class TFTrainer(Trainer):
+    """This class implements a trainer for TensorFlow algorithms.
 
-    A local runner provides a default TensorFlow session using python context.
+    A trainer provides a default TensorFlow session using python context.
     This is useful for those experiment components (e.g. policy) that require a
     TensorFlow session during construction.
 
-    Use Runner.setup(algo, env) to setup algorithm and environment for runner
-    and Runner.train() to start training.
+    Use trainer.setup(algo, env) to setup algorithm and environment for trainer
+    and trainer.train() to start training.
 
     Args:
         snapshot_config (garage.experiment.SnapshotConfig): The snapshot
-            configuration used by LocalRunner to create the snapshotter.
+            configuration used by Trainer to create the snapshotter.
             If None, it will create one with default settings.
         sess (tf.Session): An optional TensorFlow session.
               A new session will be created immediately if not provided.
@@ -46,7 +46,7 @@ class LocalTFRunner(LocalRunner):
 
     Examples:
         # to train
-        with LocalTFRunner() as runner:
+        with TFTrainer() as trainer:
             env = gym.make('CartPole-v1')
             policy = CategoricalMLPPolicy(
                 env_spec=env.spec,
@@ -58,18 +58,18 @@ class LocalTFRunner(LocalRunner):
                 max_episode_length=100,
                 discount=0.99,
                 max_kl_step=0.01)
-            runner.setup(algo, env)
-            runner.train(n_epochs=100, batch_size=4000)
+            trainer.setup(algo, env)
+            trainer.train(n_epochs=100, batch_size=4000)
 
         # to resume immediately.
-        with LocalTFRunner() as runner:
-            runner.restore(resume_from_dir)
-            runner.resume()
+        with TFTrainer() as trainer:
+            trainer.restore(resume_from_dir)
+            trainer.resume()
 
         # to resume with modified training arguments.
-        with LocalTFRunner() as runner:
-            runner.restore(resume_from_dir)
-            runner.resume(n_epochs=20)
+        with TFTrainer() as trainer:
+            trainer.restore(resume_from_dir)
+            trainer.resume(n_epochs=20)
 
     """
 
@@ -82,7 +82,7 @@ class LocalTFRunner(LocalRunner):
         """Set self.sess as the default session.
 
         Returns:
-            LocalTFRunner: This local runner.
+            TFTrainer: This trainer.
 
         """
         if tf.compat.v1.get_default_session() is not self.sess:
@@ -151,9 +151,9 @@ class LocalTFRunner(LocalRunner):
               n_workers=psutil.cpu_count(logical=False),
               worker_class=None,
               worker_args=None):
-        """Set up runner and sessions for algorithm and environment.
+        """Set up trainer and sessions for algorithm and environment.
 
-        This method saves algo and env within runner and creates a sampler,
+        This method saves algo and env within trainer and creates a sampler,
         and initializes all uninitialized variables in session.
 
         Note:
@@ -202,15 +202,15 @@ class LocalTFRunner(LocalRunner):
                 ]))
 
 
-class __FakeLocalTFRunner:
+class __FakeTFTrainer:
     # noqa: E501; pylint: disable=missing-param-doc,too-few-public-methods,no-method-argument
     """Raises an ImportError for environments without TensorFlow."""
 
     def __init__(*args, **kwargs):
         raise ImportError(
-            'LocalTFRunner requires TensorFlow. To use it, please install '
+            'TFTrainer requires TensorFlow. To use it, please install '
             'TensorFlow.')
 
 
 if not tf:
-    LocalTFRunner = __FakeLocalTFRunner  # noqa: F811
+    TFTrainer = __FakeTFTrainer  # noqa: F811

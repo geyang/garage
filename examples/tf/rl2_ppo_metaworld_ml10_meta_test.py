@@ -6,7 +6,7 @@ import metaworld.benchmarks as mwb
 
 from garage import wrap_experiment
 from garage.envs import GymEnv
-from garage.experiment import LocalTFRunner, task_sampler
+from garage.experiment import task_sampler
 from garage.experiment.deterministic import set_seed
 from garage.experiment.meta_evaluator import MetaEvaluator
 from garage.np.baselines import LinearFeatureBaseline
@@ -14,6 +14,7 @@ from garage.sampler import LocalSampler
 from garage.tf.algos import RL2PPO
 from garage.tf.algos.rl2 import RL2Env, RL2Worker
 from garage.tf.policies import GaussianGRUPolicy
+from garage.trainer import TFTrainer
 
 
 @click.command()
@@ -28,7 +29,7 @@ def rl2_ppo_metaworld_ml10_meta_test(ctxt, seed, meta_batch_size, n_epochs,
 
     Args:
         ctxt (ExperimentContext): The experiment configuration used by
-            :class:`~LocalRunner` to create the :class:`~Snapshotter`.
+            :class:`~Trainer` to create the :class:`~Snapshotter`.
         seed (int): Used to seed the random number generator to produce
             determinism.
         meta_batch_size (int): Meta batch size.
@@ -37,9 +38,13 @@ def rl2_ppo_metaworld_ml10_meta_test(ctxt, seed, meta_batch_size, n_epochs,
 
     """
     set_seed(seed)
+<<<<<<< HEAD
     with LocalTFRunner(snapshot_config=ctxt) as runner:
         max_episode_length = 150
         inner_max_episode_length = max_episode_length * episode_per_task
+=======
+    with TFTrainer(snapshot_config=ctxt) as trainer:
+>>>>>>> Rename runner to trainer
         ml10_train_envs = [
             RL2Env(GymEnv(mwb.ML10.from_task(task_name)))
             for task_name in mwb.ML10.get_train_tasks().all_task_names
@@ -91,14 +96,14 @@ def rl2_ppo_metaworld_ml10_meta_test(ctxt, seed, meta_batch_size, n_epochs,
                       meta_evaluator=meta_evaluator,
                       n_epochs_per_eval=10)
 
-        runner.setup(algo,
+        trainer.setup(algo,
                      tasks.sample(meta_batch_size),
                      sampler_cls=LocalSampler,
                      n_workers=meta_batch_size,
                      worker_class=RL2Worker,
                      worker_args=dict(n_episodes_per_trial=episode_per_task))
 
-        runner.train(n_epochs=n_epochs,
+        trainer.train(n_epochs=n_epochs,
                      batch_size=episode_per_task * max_episode_length *
                      meta_batch_size)
 

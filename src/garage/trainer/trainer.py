@@ -35,7 +35,7 @@ class ExperimentStats:
 
 class SetupArgs:
     # pylint: disable=too-few-public-methods
-    """Arguments to setup a runner.
+    """Arguments to setup a trainer.
 
     Args:
         sampler_cls (Sampler): A sampler class.
@@ -74,42 +74,42 @@ class TrainArgs:
         self.start_epoch = start_epoch
 
 
-class LocalRunner:
-    """Base class of local runner.
+class Trainer:
+    """Base class of trainer.
 
-    Use Runner.setup(algo, env) to setup algorithm and environment for runner
-    and Runner.train() to start training.
+    Use trainer.setup(algo, env) to setup algorithm and environment for trainer
+    and trainer.train() to start training.
 
     Args:
         snapshot_config (garage.experiment.SnapshotConfig): The snapshot
-            configuration used by LocalRunner to create the snapshotter.
+            configuration used by Trainer to create the snapshotter.
             If None, it will create one with default settings.
 
     Note:
         For the use of any TensorFlow environments, policies and algorithms,
-        please use LocalTFRunner().
+        please use TFTrainer().
 
     Examples:
         | # to train
-        | runner = LocalRunner()
+        | trainer = Trainer()
         | env = Env(...)
         | policy = Policy(...)
         | algo = Algo(
         |         env=env,
         |         policy=policy,
         |         ...)
-        | runner.setup(algo, env)
-        | runner.train(n_epochs=100, batch_size=4000)
+        | trainer.setup(algo, env)
+        | trainer.train(n_epochs=100, batch_size=4000)
 
         | # to resume immediately.
-        | runner = LocalRunner()
-        | runner.restore(resume_from_dir)
-        | runner.resume()
+        | trainer = Trainer()
+        | trainer.restore(resume_from_dir)
+        | trainer.resume()
 
         | # to resume with modified training arguments.
-        | runner = LocalRunner()
-        | runner.restore(resume_from_dir)
-        | runner.resume(n_epochs=20)
+        | trainer = Trainer()
+        | trainer.restore(resume_from_dir)
+        | trainer.resume(n_epochs=20)
 
     """
 
@@ -181,14 +181,14 @@ class LocalRunner:
         if policy is None:
             policy = getattr(self._algo, 'policy', None)
         if policy is None:
-            raise ValueError('If the runner is used to construct a sampler, '
+            raise ValueError('If the trainer is used to construct a sampler, '
                              'the algorithm must have a `policy` or '
                              '`exploration_policy` field.')
         if max_episode_length is None:
             if hasattr(self._algo, 'max_episode_length'):
                 max_episode_length = self._algo.max_episode_length
         if max_episode_length is None:
-            raise ValueError('If `sampler_cls` is specified in runner.setup, '
+            raise ValueError('If `sampler_cls` is specified in trainer.setup, '
                              'the algorithm must specify `max_episode_length`')
         if worker_class is None:
             worker_class = getattr(self._algo, 'worker_cls', DefaultWorker)
@@ -215,9 +215,9 @@ class LocalRunner:
               n_workers=psutil.cpu_count(logical=False),
               worker_class=None,
               worker_args=None):
-        """Set up runner for algorithm and environment.
+        """Set up trainer for algorithm and environment.
 
-        This method saves algo and env within runner and creates a sampler.
+        This method saves algo and env within trainer and creates a sampler.
 
         Note:
             After setup() is called all variables in session should have been
@@ -304,7 +304,7 @@ class LocalRunner:
                 be spread across the workers.
 
         Raises:
-            ValueError: If the runner was initialized without a sampler, or
+            ValueError: If the trainer was initialized without a sampler, or
                 batch_size wasn't provided here or to train.
 
         Returns:
@@ -312,13 +312,13 @@ class LocalRunner:
 
         """
         if self._sampler is None:
-            raise ValueError('Runner was not initialized with `sampler_cls`. '
-                             'Either provide `sampler_cls` to runner.setup, '
+            raise ValueError('trainer was not initialized with `sampler_cls`. '
+                             'Either provide `sampler_cls` to trainer.setup, '
                              ' or set `algo.sampler_cls`.')
         if batch_size is None and self._train_args.batch_size is None:
-            raise ValueError('Runner was not initialized with `batch_size`. '
-                             'Either provide `batch_size` to runner.train, '
-                             ' or pass `batch_size` to runner.obtain_samples.')
+            raise ValueError('trainer was not initialized with `batch_size`. '
+                             'Either provide `batch_size` to trainer.train, '
+                             ' or pass `batch_size` to trainer.obtain_samples.')
         episodes = None
         if agent_update is None:
             agent_update = self._algo.policy.get_param_values()
@@ -350,7 +350,7 @@ class LocalRunner:
                 be spread across the workers.
 
         Raises:
-            ValueError: Raised if the runner was initialized without a sampler,
+            ValueError: Raised if the trainer was initialized without a sampler,
                         or batch_size wasn't provided here or to train.
 
         Returns:
@@ -367,11 +367,11 @@ class LocalRunner:
             epoch (int): Epoch.
 
         Raises:
-            NotSetupError: if save() is called before the runner is set up.
+            NotSetupError: if save() is called before the trainer is set up.
 
         """
         if not self._has_setup:
-            raise NotSetupError('Use setup() to setup runner before saving.')
+            raise NotSetupError('Use setup() to setup trainer before saving.')
 
         logger.log('Saving snapshot...')
 
@@ -487,7 +487,7 @@ class LocalRunner:
 
         """
         if not self._has_setup:
-            raise NotSetupError('Use setup() to setup runner before training.')
+            raise NotSetupError('Use setup() to setup trainer before training.')
 
         # Save arguments for restore
         self._train_args = TrainArgs(n_epochs=n_epochs,
@@ -519,10 +519,10 @@ class LocalRunner:
             int: The next training epoch.
 
         Examples:
-            for epoch in runner.step_epochs():
-                runner.step_episode = runner.obtain_samples(...)
+            for epoch in trainer.step_epochs():
+                trainer.step_episode = trainer.obtain_samples(...)
                 self.train_once(...)
-                runner.step_itr += 1
+                trainer.step_itr += 1
 
         """
         self._start_worker()

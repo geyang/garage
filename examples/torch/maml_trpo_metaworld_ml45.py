@@ -7,7 +7,7 @@ import torch
 
 from garage import wrap_experiment
 from garage.envs import GymEnv, normalize
-from garage.experiment import LocalRunner, MetaEvaluator
+from garage.experiment import Trainer, MetaEvaluator
 from garage.experiment.deterministic import set_seed
 from garage.experiment.task_sampler import EnvPoolSampler
 from garage.np.baselines import LinearFeatureBaseline
@@ -27,7 +27,7 @@ def maml_trpo_metaworld_ml45(ctxt, seed, epochs, episodes_per_task,
 
     Args:
         ctxt (ExperimentContext): The experiment configuration used by
-            :class:`~LocalRunner` to create the :class:`~Snapshotter`.
+            :class:`~Trainer` to create the :class:`~Snapshotter`.
         seed (int): Used to seed the random number generator to produce
             determinism.
         epochs (int): Number of training epochs.
@@ -62,7 +62,7 @@ def maml_trpo_metaworld_ml45(ctxt, seed, epochs, episodes_per_task,
                                    max_episode_length=max_episode_length,
                                    n_test_tasks=len(test_task_names))
 
-    runner = LocalRunner(ctxt)
+    trainer = Trainer(ctxt)
     algo = MAMLTRPO(env=env,
                     policy=policy,
                     value_function=value_function,
@@ -73,8 +73,8 @@ def maml_trpo_metaworld_ml45(ctxt, seed, epochs, episodes_per_task,
                     num_grad_updates=1,
                     meta_evaluator=meta_evaluator)
 
-    runner.setup(algo, env)
-    runner.train(n_epochs=epochs,
+    trainer.setup(algo, env)
+    trainer.train(n_epochs=epochs,
                  batch_size=episodes_per_task * max_episode_length)
 
 

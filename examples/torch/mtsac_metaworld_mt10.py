@@ -12,7 +12,7 @@ from torch.nn import functional as F
 from garage import wrap_experiment
 from garage.envs import GymEnv, MultiEnvWrapper, normalize
 from garage.envs.multi_env_wrapper import round_robin_strategy
-from garage.experiment import deterministic, LocalRunner
+from garage.experiment import deterministic, Trainer
 from garage.replay_buffer import PathBuffer
 from garage.sampler import LocalSampler
 from garage.torch import set_gpu_mode
@@ -30,14 +30,14 @@ def mtsac_metaworld_mt10(ctxt=None, seed=1, _gpu=None):
 
     Args:
         ctxt (garage.experiment.ExperimentContext): The experiment
-            configuration used by LocalRunner to create the snapshotter.
+            configuration used by Trainer to create the snapshotter.
         seed (int): Used to seed the random number generator to produce
             determinism.
         _gpu (int): The ID of the gpu to be used (used on multi-gpu machines).
 
     """
     deterministic.set_seed(seed)
-    runner = LocalRunner(ctxt)
+    trainer = Trainer(ctxt)
     task_names = mwb.MT10.get_train_tasks().all_task_names
     train_envs = []
     test_envs = []
@@ -97,11 +97,16 @@ def mtsac_metaworld_mt10(ctxt=None, seed=1, _gpu=None):
     if _gpu is not None:
         set_gpu_mode(True, _gpu)
     mtsac.to()
+<<<<<<< HEAD
     runner.setup(algo=mtsac,
                  env=mt10_train_envs,
                  sampler_cls=LocalSampler,
                  n_workers=1)
     runner.train(n_epochs=epochs, batch_size=batch_size)
+=======
+    trainer.setup(algo=mtsac, env=mt10_train_envs, sampler_cls=LocalSampler)
+    trainer.train(n_epochs=epochs, batch_size=batch_size)
+>>>>>>> Rename runner to trainer
 
 
 mtsac_metaworld_mt10()
